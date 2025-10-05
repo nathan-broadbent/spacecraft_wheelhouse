@@ -21,7 +21,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <stdio.h> // Include stdio library
+#include <string.h> // Include string library
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -45,6 +46,8 @@ SPI_HandleTypeDef hspi1;
 TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim22;
 
+UART_HandleTypeDef huart2;
+
 /* USER CODE BEGIN PV */
 
 /* USER CODE END PV */
@@ -55,13 +58,84 @@ static void MX_GPIO_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_TIM22_Init(void);
+static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+// Build a 16-bit SPI message for the DRV8316C-Q1
+uint16_t BuildMessage(bool isRead, uint8_t address, uint8_t data)
+/*
+ * Construct a message to be sent over the SPI communication, includes calculating the parity  bit.
+ */
+{
+    uint16_t msg = 0;
 
+    // 1. Set R/W bit (bit 15)
+    if (isRead)
+        msg |= (1 << 15);  // Read = 1
+    // else leave as 0 for Write
+
+    // 2. Set Address bits (bits 14–9)
+    msg |= ((address & 0x3F) << 9); // address and 0b0011 1111 (removes higher bits)
+
+    // 3. Set Data bits (bits 7–0)
+    msg |= (data & 0xFF); // data and 0b1111 1111 (keep all bits)
+
+    // 4. Compute even parity bit (bit 8)
+    // Count number of 1 bits so far
+    uint16_t temp = msg;
+    uint8_t count = 0;
+    for (int i = 0; i < 16; i++)
+    {
+        count += (temp >> i) & 1; // bit shift right by the value of i, then and
+    }
+
+    // If count is odd, set parity bit (to make it even)
+    if (count % 2 != 0)
+        msg |= (1 << 8);
+
+    return msg;
+}
+
+
+
+static uint8_t readRegister(uint8_t reg_address) {
+  // Function to send request for the contents of the requested register.
+  // TODO: May need to switch to hardware control of NSS line
+  uint16_t rx;
+  uint16_t tx;
+
+  tx = BuildMessage(0, reg_address, 0x00);
+
+
+  // Send read command
+  // Serial communication to get the mode of the driver
+  HAL_GPIO_WritePin(SPI1_NSS_GPIO_Port, SPI_NSS_Pin, GPIO_PIN_RESET); // remove these write commands if switching to hardware NSS
+  // Transmit function
+  HAL_SPI_TransmitReceive(&hspi1,
+		  (uint8_t *)&drv_reg, // This function is defined for 8 bit, but we can type cast our 16 bit message and it will use the size we defined earlier to extract the full message.
+		  (uint8_t *)&recv, // return param
+		  1, // Number of 16 bit frames to send
+		  HAL_MAX_DELAY);
+  HAL_GPIO_WritePin(SPI1_NSS_GPIO_Port, SPI_NSS_Pin, GPIO_PIN_SET);
+
+  // Optional: short delay between frames
+  HAL_Delay(1);
+
+  // 3. Send dummy frame to receive actual register contents
+  txData = 0x0000;
+  HAL_GPIO_WritePin(SPI1_NSS_GPIO_Port, SPI_NSS_Pin, GPIO_PIN_RESET);
+  HAL_SPI_TransmitReceive(&hspi1, (uint8_t *)&txData, (uint8_t *)&rxData, 1, HAL_MAX_DELAY);
+  HAL_GPIO_WritePin(SPI1_NSS_GPIO_Port, SPI_NSS_Pin, GPIO_PIN_SET);
+
+  // 4. Now rxData holds the register contents (lower 8 bits)
+  uint8_t regValue = rxData & 0xFF;
+
+  return regValue;
+}
 /* USER CODE END 0 */
 
 /**
@@ -72,6 +146,7 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
+	static uint8_t serial_string[50] = "";
 
   /* USER CODE END 1 */
 
@@ -96,14 +171,40 @@ int main(void)
   MX_SPI1_Init();
   MX_TIM2_Init();
   MX_TIM22_Init();
+  MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
 
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+
+
+
+
+
+  // Check the contents of the driver control register
+  sprintf((char *)serial_string, "Contents of register: \d.\r\n", readRegister(0x04)); // Read register 4 of driver (this is the register that holds the PWM mode)
+  HAL_UART_Transmit(&huart2, serial_string, strlen(serial_string), 10); // Write the buffer to the serial interface using UART protocol
+
+
+
+
+  // Set Low inputs to high. This disables high-Z mode
+  HAL_GPIO_WritePin(PWM_INLC_GPIO_Port, PWM_INLC_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(PWM_INLB_GPIO_Port, PWM_INLB_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(PWM_INLA_GPIO_Port, PWM_INLA_Pin, GPIO_PIN_SET);
+
+  // Start TIM2 PWM channels (master)
+  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);  // Phase A
+  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2);  // Phase B
+
+  // Start TIM22 PWM channel (slave)
+  HAL_TIM_PWM_Start(&htim22, TIM_CHANNEL_1); // Phase C
   while (1)
   {
+    sprintf((char *)serial_string, "Hello from Wheelhouse!.\r\n");
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -119,6 +220,7 @@ void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+  RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
 
   /** Configure the main internal regulator output voltage
   */
@@ -152,6 +254,12 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART2;
+  PeriphClkInit.Usart2ClockSelection = RCC_USART2CLKSOURCE_PCLK1;
+  if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
+  {
+    Error_Handler();
+  }
 }
 
 /**
@@ -173,10 +281,10 @@ static void MX_SPI1_Init(void)
   hspi1.Instance = SPI1;
   hspi1.Init.Mode = SPI_MODE_MASTER;
   hspi1.Init.Direction = SPI_DIRECTION_2LINES;
-  hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
+  hspi1.Init.DataSize = SPI_DATASIZE_16BIT;
   hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
-  hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
-  hspi1.Init.NSS = SPI_NSS_HARD_OUTPUT;
+  hspi1.Init.CLKPhase = SPI_PHASE_2EDGE;
+  hspi1.Init.NSS = SPI_NSS_SOFT;
   hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
@@ -322,6 +430,41 @@ static void MX_TIM22_Init(void)
 }
 
 /**
+  * @brief USART2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART2_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART2_Init 0 */
+
+  /* USER CODE END USART2_Init 0 */
+
+  /* USER CODE BEGIN USART2_Init 1 */
+
+  /* USER CODE END USART2_Init 1 */
+  huart2.Instance = USART2;
+  huart2.Init.BaudRate = 115200;
+  huart2.Init.WordLength = UART_WORDLENGTH_8B;
+  huart2.Init.StopBits = UART_STOPBITS_1;
+  huart2.Init.Parity = UART_PARITY_NONE;
+  huart2.Init.Mode = UART_MODE_TX_RX;
+  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+  huart2.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  huart2.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  if (HAL_UART_Init(&huart2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART2_Init 2 */
+
+  /* USER CODE END USART2_Init 2 */
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -342,7 +485,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(DRVOFF_GPIO_Port, DRVOFF_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, PWM_INLC_Pin|PWM_INLB_Pin|NSLEEP_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, PWM_INLC_Pin|PWM_INLB_Pin|NSLEEP_Pin|SPI1_NSS_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(PWM_INLCB6_GPIO_Port, PWM_INLCB6_Pin, GPIO_PIN_RESET);
@@ -360,8 +503,8 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(NFAULT_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PWM_INLC_Pin PWM_INLB_Pin NSLEEP_Pin */
-  GPIO_InitStruct.Pin = PWM_INLC_Pin|PWM_INLB_Pin|NSLEEP_Pin;
+  /*Configure GPIO pins : PWM_INLC_Pin PWM_INLB_Pin NSLEEP_Pin SPI1_NSS_Pin */
+  GPIO_InitStruct.Pin = PWM_INLC_Pin|PWM_INLB_Pin|NSLEEP_Pin|SPI1_NSS_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -380,18 +523,6 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-// Set Low inputs to high. This disables high-Z mode
-HAL_GPIO_WritePin(PWM_INLC_GPIO_Port, PWM_INLC_Pin, GPIO_PIN_SET);
-HAL_GPIO_WritePin(PWM_INLB_GPIO_Port, PWM_INLB_Pin, GPIO_PIN_SET);
-HAL_GPIO_WritePin(PWM_INLA_GPIO_Port, PWM_INLA_Pin, GPIO_PIN_SET);
-
-// Start TIM2 PWM channels (master)
-HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);  // Phase A
-HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2);  // Phase B
-
-// Start TIM22 PWM channel (slave)
-HAL_TIM_PWM_Start(&htim22, TIM_CHANNEL_1); // Phase C
-
 /* USER CODE END 4 */
 
 /**

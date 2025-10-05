@@ -77,6 +77,8 @@ void Error_Handler(void);
 #define PWM_INLB_GPIO_Port GPIOA
 #define NSLEEP_Pin GPIO_PIN_12
 #define NSLEEP_GPIO_Port GPIOA
+#define SPI1_NSS_Pin GPIO_PIN_15
+#define SPI1_NSS_GPIO_Port GPIOA
 #define PWM_INHC_Pin GPIO_PIN_5
 #define PWM_INHC_GPIO_Port GPIOB
 #define PWM_INLCB6_Pin GPIO_PIN_6
