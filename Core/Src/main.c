@@ -41,12 +41,10 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
-SPI_HandleTypeDef hspi1;
+UART_HandleTypeDef hlpuart1;
 
 TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim22;
-
-UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 
@@ -55,10 +53,9 @@ UART_HandleTypeDef huart2;
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
-static void MX_SPI1_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_TIM22_Init(void);
-static void MX_USART2_UART_Init(void);
+static void MX_LPUART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -147,6 +144,10 @@ int main(void)
 
   /* USER CODE BEGIN 1 */
 	static uint8_t serial_string[50] = "";
+	float theta = 0.0f; // electrical angle
+	float freq = 20000.0f;
+	float Ts;
+	float period;
 
   /* USER CODE END 1 */
 
@@ -168,10 +169,9 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_SPI1_Init();
   MX_TIM2_Init();
   MX_TIM22_Init();
-  MX_USART2_UART_Init();
+  MX_LPUART1_UART_Init();
   /* USER CODE BEGIN 2 */
 
   /* USER CODE END 2 */
@@ -188,22 +188,52 @@ int main(void)
   HAL_UART_Transmit(&huart2, serial_string, strlen(serial_string), 10); // Write the buffer to the serial interface using UART protocol
 
 
-
+  // Turn driver off
+  HAL_GPIO_WritePin(DRVOFF_GPIO_Port, PWM_INLC_Pin, GPIO_PIN_SET);
 
   // Set Low inputs to high. This disables high-Z mode
-  HAL_GPIO_WritePin(PWM_INLC_GPIO_Port, PWM_INLC_Pin, GPIO_PIN_SET);
-  HAL_GPIO_WritePin(PWM_INLB_GPIO_Port, PWM_INLB_Pin, GPIO_PIN_SET);
-  HAL_GPIO_WritePin(PWM_INLA_GPIO_Port, PWM_INLA_Pin, GPIO_PIN_SET);
+//  HAL_GPIO_WritePin(PWM_INLC_GPIO_Port, PWM_INLC_Pin, GPIO_PIN_SET);
+//  HAL_GPIO_WritePin(PWM_INLB_GPIO_Port, PWM_INLB_Pin, GPIO_PIN_SET);
+//  HAL_GPIO_WritePin(PWM_INLA_GPIO_Port, PWM_INLA_Pin, GPIO_PIN_SET);
 
   // Start TIM2 PWM channels (master)
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);  // Phase A
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2);  // Phase B
 
   // Start TIM22 PWM channel (slave)
-  HAL_TIM_PWM_Start(&htim22, TIM_CHANNEL_1); // Phase C
+  HAL_TIM_PWM_Start(&htim22, TIM_CHANNEL_2); // Phase C
+  theta = 0.0f;
+
+  // we are using open loop control and incrementing this each iteration to change the duty cycle
   while (1)
   {
-    sprintf((char *)serial_string, "Hello from Wheelhouse!.\r\n");
+    // sprintf((char *)serial_string, "Hello from Wheelhouse!.\r\n");
+
+    uint32_t period = __HAL_TIM_GET_AUTORELOAD(&htim1);
+
+    // PWM TEST
+    uint32_t dutyA = period * 0.3;  // 30% duty
+    uint32_t dutyB = period * 0.5;  // 50% duty
+    uint32_t dutyC = period * 0.7;  // 70% duty
+
+    HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, dutyA);
+    HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_2, dutyB);
+    HAL_TIM_SET_COMPARE(&htim22, TIM_CHANNEL_2, dutyC);
+
+    // Open Loop motor control:
+    // We must set the duty cycle based on the electrical angle of the motor
+    theta += 2.0f * M_PI * freq * Ts;
+
+    // This is the brains of the control. It controls the PWM of each phase
+//    float Va = 0.5f + 0.5f * sinf(theta);
+//	float Vb = 0.5f + 0.5f * sinf(theta - 2.094f); // offset by -120 deg
+//	float Vc = 0.5f + 0.5f * sinf(theta + 2.094f); // offset by +120 deg
+//
+//	HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, Va * period);
+//	HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_2, Vb * period);
+//	HAL_TIM_SET_COMPARE(&htim22, TIM_CHANNEL_2, Vc * period);
+
+    HAL_delay(1);
 
     /* USER CODE END WHILE */
 
@@ -254,8 +284,8 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART2;
-  PeriphClkInit.Usart2ClockSelection = RCC_USART2CLKSOURCE_PCLK1;
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_LPUART1;
+  PeriphClkInit.Lpuart1ClockSelection = RCC_LPUART1CLKSOURCE_PCLK1;
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
   {
     Error_Handler();
@@ -263,40 +293,36 @@ void SystemClock_Config(void)
 }
 
 /**
-  * @brief SPI1 Initialization Function
+  * @brief LPUART1 Initialization Function
   * @param None
   * @retval None
   */
-static void MX_SPI1_Init(void)
+static void MX_LPUART1_UART_Init(void)
 {
 
-  /* USER CODE BEGIN SPI1_Init 0 */
+  /* USER CODE BEGIN LPUART1_Init 0 */
 
-  /* USER CODE END SPI1_Init 0 */
+  /* USER CODE END LPUART1_Init 0 */
 
-  /* USER CODE BEGIN SPI1_Init 1 */
+  /* USER CODE BEGIN LPUART1_Init 1 */
 
-  /* USER CODE END SPI1_Init 1 */
-  /* SPI1 parameter configuration*/
-  hspi1.Instance = SPI1;
-  hspi1.Init.Mode = SPI_MODE_MASTER;
-  hspi1.Init.Direction = SPI_DIRECTION_2LINES;
-  hspi1.Init.DataSize = SPI_DATASIZE_16BIT;
-  hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
-  hspi1.Init.CLKPhase = SPI_PHASE_2EDGE;
-  hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
-  hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
-  hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
-  hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
-  hspi1.Init.CRCPolynomial = 7;
-  if (HAL_SPI_Init(&hspi1) != HAL_OK)
+  /* USER CODE END LPUART1_Init 1 */
+  hlpuart1.Instance = LPUART1;
+  hlpuart1.Init.BaudRate = 209700;
+  hlpuart1.Init.WordLength = UART_WORDLENGTH_7B;
+  hlpuart1.Init.StopBits = UART_STOPBITS_1;
+  hlpuart1.Init.Parity = UART_PARITY_NONE;
+  hlpuart1.Init.Mode = UART_MODE_TX_RX;
+  hlpuart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  hlpuart1.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  hlpuart1.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  if (HAL_UART_Init(&hlpuart1) != HAL_OK)
   {
     Error_Handler();
   }
-  /* USER CODE BEGIN SPI1_Init 2 */
+  /* USER CODE BEGIN LPUART1_Init 2 */
 
-  /* USER CODE END SPI1_Init 2 */
+  /* USER CODE END LPUART1_Init 2 */
 
 }
 
@@ -322,7 +348,7 @@ static void MX_TIM2_Init(void)
   htim2.Instance = TIM2;
   htim2.Init.Prescaler = 0;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 65535;
+  htim2.Init.Period = 399;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
@@ -386,7 +412,7 @@ static void MX_TIM22_Init(void)
   htim22.Instance = TIM22;
   htim22.Init.Prescaler = 0;
   htim22.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim22.Init.Period = 65535;
+  htim22.Init.Period = 399;
   htim22.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim22.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim22) != HAL_OK)
@@ -430,41 +456,6 @@ static void MX_TIM22_Init(void)
 }
 
 /**
-  * @brief USART2 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_USART2_UART_Init(void)
-{
-
-  /* USER CODE BEGIN USART2_Init 0 */
-
-  /* USER CODE END USART2_Init 0 */
-
-  /* USER CODE BEGIN USART2_Init 1 */
-
-  /* USER CODE END USART2_Init 1 */
-  huart2.Instance = USART2;
-  huart2.Init.BaudRate = 115200;
-  huart2.Init.WordLength = UART_WORDLENGTH_8B;
-  huart2.Init.StopBits = UART_STOPBITS_1;
-  huart2.Init.Parity = UART_PARITY_NONE;
-  huart2.Init.Mode = UART_MODE_TX_RX;
-  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
-  huart2.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
-  huart2.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
-  if (HAL_UART_Init(&huart2) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN USART2_Init 2 */
-
-  /* USER CODE END USART2_Init 2 */
-
-}
-
-/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -485,7 +476,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(DRVOFF_GPIO_Port, DRVOFF_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, PWM_INLC_Pin|PWM_INLB_Pin|NSLEEP_Pin|SPI1_NSS_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, PWM_INLC_Pin|PWM_INLB_Pin|NSLEEP_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(PWM_INLCB6_GPIO_Port, PWM_INLCB6_Pin, GPIO_PIN_RESET);
@@ -503,11 +494,19 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(NFAULT_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PWM_INLC_Pin PWM_INLB_Pin NSLEEP_Pin SPI1_NSS_Pin */
-  GPIO_InitStruct.Pin = PWM_INLC_Pin|PWM_INLB_Pin|NSLEEP_Pin|SPI1_NSS_Pin;
+  /*Configure GPIO pins : PWM_INLC_Pin PWM_INLB_Pin NSLEEP_Pin */
+  GPIO_InitStruct.Pin = PWM_INLC_Pin|PWM_INLB_Pin|NSLEEP_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : POCI_Pin PICO_Pin */
+  GPIO_InitStruct.Pin = POCI_Pin|PICO_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+  GPIO_InitStruct.Alternate = GPIO_AF0_SPI1;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /*Configure GPIO pin : PWM_INLCB6_Pin */
