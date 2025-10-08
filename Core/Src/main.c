@@ -23,6 +23,7 @@
 /* USER CODE BEGIN Includes */
 #include <stdio.h> // Include stdio library
 #include <string.h> // Include string library
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -62,77 +63,7 @@ static void MX_LPUART1_UART_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-// Build a 16-bit SPI message for the DRV8316C-Q1
-uint16_t BuildMessage(bool isRead, uint8_t address, uint8_t data)
-/*
- * Construct a message to be sent over the SPI communication, includes calculating the parity  bit.
- */
-{
-    uint16_t msg = 0;
 
-    // 1. Set R/W bit (bit 15)
-    if (isRead)
-        msg |= (1 << 15);  // Read = 1
-    // else leave as 0 for Write
-
-    // 2. Set Address bits (bits 14–9)
-    msg |= ((address & 0x3F) << 9); // address and 0b0011 1111 (removes higher bits)
-
-    // 3. Set Data bits (bits 7–0)
-    msg |= (data & 0xFF); // data and 0b1111 1111 (keep all bits)
-
-    // 4. Compute even parity bit (bit 8)
-    // Count number of 1 bits so far
-    uint16_t temp = msg;
-    uint8_t count = 0;
-    for (int i = 0; i < 16; i++)
-    {
-        count += (temp >> i) & 1; // bit shift right by the value of i, then and
-    }
-
-    // If count is odd, set parity bit (to make it even)
-    if (count % 2 != 0)
-        msg |= (1 << 8);
-
-    return msg;
-}
-
-
-
-static uint8_t readRegister(uint8_t reg_address) {
-  // Function to send request for the contents of the requested register.
-  // TODO: May need to switch to hardware control of NSS line
-  uint16_t rx;
-  uint16_t tx;
-
-  tx = BuildMessage(0, reg_address, 0x00);
-
-
-  // Send read command
-  // Serial communication to get the mode of the driver
-  HAL_GPIO_WritePin(SPI1_NSS_GPIO_Port, SPI_NSS_Pin, GPIO_PIN_RESET); // remove these write commands if switching to hardware NSS
-  // Transmit function
-  HAL_SPI_TransmitReceive(&hspi1,
-		  (uint8_t *)&drv_reg, // This function is defined for 8 bit, but we can type cast our 16 bit message and it will use the size we defined earlier to extract the full message.
-		  (uint8_t *)&recv, // return param
-		  1, // Number of 16 bit frames to send
-		  HAL_MAX_DELAY);
-  HAL_GPIO_WritePin(SPI1_NSS_GPIO_Port, SPI_NSS_Pin, GPIO_PIN_SET);
-
-  // Optional: short delay between frames
-  HAL_Delay(1);
-
-  // 3. Send dummy frame to receive actual register contents
-  txData = 0x0000;
-  HAL_GPIO_WritePin(SPI1_NSS_GPIO_Port, SPI_NSS_Pin, GPIO_PIN_RESET);
-  HAL_SPI_TransmitReceive(&hspi1, (uint8_t *)&txData, (uint8_t *)&rxData, 1, HAL_MAX_DELAY);
-  HAL_GPIO_WritePin(SPI1_NSS_GPIO_Port, SPI_NSS_Pin, GPIO_PIN_SET);
-
-  // 4. Now rxData holds the register contents (lower 8 bits)
-  uint8_t regValue = rxData & 0xFF;
-
-  return regValue;
-}
 /* USER CODE END 0 */
 
 /**
@@ -146,9 +77,8 @@ int main(void)
 	static uint8_t serial_string[50] = "";
 	float theta = 0.0f; // electrical angle
 	float freq = 20000.0f;
-	float Ts;
-	float period;
-
+	float Ts = 1.0f / 20000; // Time step
+	float M_PI = 3.141592653;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -179,13 +109,9 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
 
-
-
-
-
   // Check the contents of the driver control register
-  sprintf((char *)serial_string, "Contents of register: \d.\r\n", readRegister(0x04)); // Read register 4 of driver (this is the register that holds the PWM mode)
-  HAL_UART_Transmit(&huart2, serial_string, strlen(serial_string), 10); // Write the buffer to the serial interface using UART protocol
+  sprintf((char *)serial_string, "Hello From Wheelhouse!\r\n");
+  HAL_UART_Transmit(&hlpuart1, serial_string, strlen(serial_string), 10); // Write the buffer to the serial interface using UART protocol
 
 
   // Turn driver off
@@ -209,31 +135,31 @@ int main(void)
   {
     // sprintf((char *)serial_string, "Hello from Wheelhouse!.\r\n");
 
-    uint32_t period = __HAL_TIM_GET_AUTORELOAD(&htim1);
+    uint32_t period = __HAL_TIM_GET_AUTORELOAD(&htim2);
 
     // PWM TEST
     uint32_t dutyA = period * 0.3;  // 30% duty
     uint32_t dutyB = period * 0.5;  // 50% duty
     uint32_t dutyC = period * 0.7;  // 70% duty
 
-    HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, dutyA);
-    HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_2, dutyB);
-    HAL_TIM_SET_COMPARE(&htim22, TIM_CHANNEL_2, dutyC);
+    __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, dutyA);
+    __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_2, dutyB);
+    __HAL_TIM_SET_COMPARE(&htim22, TIM_CHANNEL_2, dutyC);
 
     // Open Loop motor control:
     // We must set the duty cycle based on the electrical angle of the motor
     theta += 2.0f * M_PI * freq * Ts;
 
     // This is the brains of the control. It controls the PWM of each phase
-//    float Va = 0.5f + 0.5f * sinf(theta);
-//	float Vb = 0.5f + 0.5f * sinf(theta - 2.094f); // offset by -120 deg
-//	float Vc = 0.5f + 0.5f * sinf(theta + 2.094f); // offset by +120 deg
-//
-//	HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, Va * period);
-//	HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_2, Vb * period);
-//	HAL_TIM_SET_COMPARE(&htim22, TIM_CHANNEL_2, Vc * period);
+	//    float Va = 0.5f + 0.5f * sinf(theta);
+	//	float Vb = 0.5f + 0.5f * sinf(theta - 2.094f); // offset by -120 deg
+	//	float Vc = 0.5f + 0.5f * sinf(theta + 2.094f); // offset by +120 deg
+	//
+	//	HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, Va * period);
+	//	HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_2, Vb * period);
+	//	HAL_TIM_SET_COMPARE(&htim22, TIM_CHANNEL_2, Vc * period);
 
-    HAL_delay(1);
+    HAL_Delay(1);
 
     /* USER CODE END WHILE */
 
