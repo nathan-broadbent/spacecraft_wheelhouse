@@ -60,8 +60,8 @@ all: main-build
 main-build: Wheelhouse.elf secondary-outputs
 
 # Tool invocations
-Wheelhouse.elf Wheelhouse.map: $(OBJS) $(USER_OBJS) C:\Users\Admin\STM32CubeIDE\workspace_1.19.0\Wheelhouse\STM32L031K6TX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "Wheelhouse.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m0plus -T"C:\Users\Admin\STM32CubeIDE\workspace_1.19.0\Wheelhouse\STM32L031K6TX_FLASH.ld" --specs=nosys.specs -Wl,-Map="Wheelhouse.map" -Wl,--gc-sections -static --specs=nano.specs -mfloat-abi=soft -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+Wheelhouse.elf Wheelhouse.map: $(OBJS) $(USER_OBJS) C:\Users\natha\STM32CubeIDE\workspace_1.19.0\Wheelhouse\STM32L031K6TX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-gcc -o "Wheelhouse.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m0plus -T"C:\Users\natha\STM32CubeIDE\workspace_1.19.0\Wheelhouse\STM32L031K6TX_FLASH.ld" --specs=nosys.specs -Wl,-Map="Wheelhouse.map" -Wl,--gc-sections -static --specs=nano.specs -mfloat-abi=soft -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 

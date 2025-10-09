@@ -23,6 +23,7 @@
 /* USER CODE BEGIN Includes */
 #include <stdio.h> // Include stdio library
 #include <string.h> // Include string library
+#include <math.h> // Include math library
 
 /* USER CODE END Includes */
 
@@ -33,7 +34,20 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+static uint8_t serial_string[50] = "";
+float theta = 0.0f; // electrical angle
+float freq = 5.0f; // Speed of the motor
+float Ts = 1.0f; // Time step - should be roughly the same as the delay time...
 
+float dutyA;
+float dutyB;
+float dutyC;
+
+uint32_t compareA;
+uint32_t compareB;
+uint32_t compareC;
+
+uint32_t period;
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -42,6 +56,8 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+ADC_HandleTypeDef hadc;
+
 UART_HandleTypeDef hlpuart1;
 
 TIM_HandleTypeDef htim2;
@@ -57,6 +73,7 @@ static void MX_GPIO_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_TIM22_Init(void);
 static void MX_LPUART1_UART_Init(void);
+static void MX_ADC_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -74,11 +91,6 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-	static uint8_t serial_string[50] = "";
-	float theta = 0.0f; // electrical angle
-	float freq = 20000.0f;
-	float Ts = 1.0f / 20000; // Time step
-	float M_PI = 3.141592653;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -102,6 +114,7 @@ int main(void)
   MX_TIM2_Init();
   MX_TIM22_Init();
   MX_LPUART1_UART_Init();
+  MX_ADC_Init();
   /* USER CODE BEGIN 2 */
 
   /* USER CODE END 2 */
@@ -113,51 +126,58 @@ int main(void)
   sprintf((char *)serial_string, "Hello From Wheelhouse!\r\n");
   HAL_UART_Transmit(&hlpuart1, serial_string, strlen(serial_string), 10); // Write the buffer to the serial interface using UART protocol
 
-
+  // TODO: Comment out if running motor
   // Turn driver off
-  HAL_GPIO_WritePin(DRVOFF_GPIO_Port, PWM_INLC_Pin, GPIO_PIN_SET);
+//  HAL_GPIO_WritePin(DRVOFF_GPIO_Port, DRVOFF_Pin, GPIO_PIN_SET);
 
+  // TOOD: Uncomment for running motor
   // Set Low inputs to high. This disables high-Z mode
-//  HAL_GPIO_WritePin(PWM_INLC_GPIO_Port, PWM_INLC_Pin, GPIO_PIN_SET);
-//  HAL_GPIO_WritePin(PWM_INLB_GPIO_Port, PWM_INLB_Pin, GPIO_PIN_SET);
-//  HAL_GPIO_WritePin(PWM_INLA_GPIO_Port, PWM_INLA_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(PWM_INLC_GPIO_Port, PWM_INLC_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(PWM_INLB_GPIO_Port, PWM_INLB_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(PWM_INLA_GPIO_Port, PWM_INLA_Pin, GPIO_PIN_RESET);
 
-  // Start TIM2 PWM channels (master)
-  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);  // Phase A
-  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2);  // Phase B
+//  HAL_GPIO_WritePin(PWM_INHC_GPIO_Port, PWM_INHC_Pin, GPIO_PIN_RESET);
+//  HAL_GPIO_WritePin(PWM_INHB_GPIO_Port, PWM_INHB_Pin, GPIO_PIN_RESET);
+//  HAL_GPIO_WritePin(PWM_INHA_GPIO_Port, PWM_INHA_Pin, GPIO_PIN_RESET);
 
-  // Start TIM22 PWM channel (slave)
-  HAL_TIM_PWM_Start(&htim22, TIM_CHANNEL_2); // Phase C
+//  // Start TIM2 PWM channels (master)
+//  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);  // Phase A
+//  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2);  // Phase B
+//
+//  // Start TIM22 PWM channel (slave)
+//  HAL_TIM_PWM_Start(&htim22, TIM_CHANNEL_2); // Phase C
   theta = 0.0f;
+  period = __HAL_TIM_GET_AUTORELOAD(&htim2);
 
   // we are using open loop control and incrementing this each iteration to change the duty cycle
   while (1)
   {
     // sprintf((char *)serial_string, "Hello from Wheelhouse!.\r\n");
 
-    uint32_t period = __HAL_TIM_GET_AUTORELOAD(&htim2);
+	// TODO: Comment out if running the motor
+    // Testing
+//	dutyA = 0.3;
+//	dutyB = 0.6;
+//	dutyC = 0.9;
 
-    // PWM TEST
-    uint32_t dutyA = period * 0.3;  // 30% duty
-    uint32_t dutyB = period * 0.5;  // 50% duty
-    uint32_t dutyC = period * 0.7;  // 70% duty
-
-    __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, dutyA);
-    __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_2, dutyB);
-    __HAL_TIM_SET_COMPARE(&htim22, TIM_CHANNEL_2, dutyC);
-
+	// TODO: Uncomment the next 2 sections if running the motor
     // Open Loop motor control:
-    // We must set the duty cycle based on the electrical angle of the motor
-    theta += 2.0f * M_PI * freq * Ts;
+	// Since we are using open loop motor control, we increment the electrical
+    // angle at the specified speed and assume the motor will keep up
+//	theta += 2.0f * M_PI * freq * Ts;
 
-    // This is the brains of the control. It controls the PWM of each phase
-	//    float Va = 0.5f + 0.5f * sinf(theta);
-	//	float Vb = 0.5f + 0.5f * sinf(theta - 2.094f); // offset by -120 deg
-	//	float Vc = 0.5f + 0.5f * sinf(theta + 2.094f); // offset by +120 deg
-	//
-	//	HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, Va * period);
-	//	HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_2, Vb * period);
-	//	HAL_TIM_SET_COMPARE(&htim22, TIM_CHANNEL_2, Vc * period);
+	// Set the duty cycle based on electrical angle
+//	dutyA = 0.5f + 0.5f * sinf(theta);
+//	dutyB = 0.5f + 0.5f * sinf(theta - 2.094f); // offset by -120 deg
+//	dutyC = 0.5f + 0.5f * sinf(theta + 2.094f); // offset by +120 deg
+
+//    compareA = period * dutyA;
+//    compareB = period * dutyB;
+//    compareC = period * dutyC;
+
+//    __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, compareB); // PWM_INHB
+//    __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_2, compareA); // PWM_INHA
+//    __HAL_TIM_SET_COMPARE(&htim22, TIM_CHANNEL_2, compareC); // PWM_INHC
 
     HAL_Delay(1);
 
@@ -216,6 +236,78 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+}
+
+/**
+  * @brief ADC Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_ADC_Init(void)
+{
+
+  /* USER CODE BEGIN ADC_Init 0 */
+
+  /* USER CODE END ADC_Init 0 */
+
+  ADC_ChannelConfTypeDef sConfig = {0};
+
+  /* USER CODE BEGIN ADC_Init 1 */
+
+  /* USER CODE END ADC_Init 1 */
+
+  /** Configure the global features of the ADC (Clock, Resolution, Data Alignment and number of conversion)
+  */
+  hadc.Instance = ADC1;
+  hadc.Init.OversamplingMode = DISABLE;
+  hadc.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV2;
+  hadc.Init.Resolution = ADC_RESOLUTION_12B;
+  hadc.Init.SamplingTime = ADC_SAMPLETIME_1CYCLE_5;
+  hadc.Init.ScanConvMode = ADC_SCAN_DIRECTION_FORWARD;
+  hadc.Init.DataAlign = ADC_DATAALIGN_RIGHT;
+  hadc.Init.ContinuousConvMode = DISABLE;
+  hadc.Init.DiscontinuousConvMode = DISABLE;
+  hadc.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
+  hadc.Init.ExternalTrigConv = ADC_SOFTWARE_START;
+  hadc.Init.DMAContinuousRequests = DISABLE;
+  hadc.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
+  hadc.Init.Overrun = ADC_OVR_DATA_PRESERVED;
+  hadc.Init.LowPowerAutoWait = DISABLE;
+  hadc.Init.LowPowerFrequencyMode = DISABLE;
+  hadc.Init.LowPowerAutoPowerOff = DISABLE;
+  if (HAL_ADC_Init(&hadc) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure for the selected ADC regular channel to be converted.
+  */
+  sConfig.Channel = ADC_CHANNEL_4;
+  sConfig.Rank = ADC_RANK_CHANNEL_NUMBER;
+  if (HAL_ADC_ConfigChannel(&hadc, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure for the selected ADC regular channel to be converted.
+  */
+  sConfig.Channel = ADC_CHANNEL_5;
+  if (HAL_ADC_ConfigChannel(&hadc, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure for the selected ADC regular channel to be converted.
+  */
+  sConfig.Channel = ADC_CHANNEL_9;
+  if (HAL_ADC_ConfigChannel(&hadc, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN ADC_Init 2 */
+
+  /* USER CODE END ADC_Init 2 */
+
 }
 
 /**
@@ -355,7 +447,7 @@ static void MX_TIM22_Init(void)
     Error_Handler();
   }
   sSlaveConfig.SlaveMode = TIM_SLAVEMODE_TRIGGER;
-  sSlaveConfig.InputTrigger = TIM_TS_ITR0;
+  sSlaveConfig.InputTrigger = TIM_TS_ITR1;
   if (HAL_TIM_SlaveConfigSynchro(&htim22, &sSlaveConfig) != HAL_OK)
   {
     Error_Handler();
@@ -402,10 +494,10 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(DRVOFF_GPIO_Port, DRVOFF_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, PWM_INLC_Pin|PWM_INLB_Pin|NSLEEP_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, PWM_INLA_Pin|PWM_INLB_Pin|NSLEEP_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(PWM_INLCB6_GPIO_Port, PWM_INLCB6_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(PWM_INLC_GPIO_Port, PWM_INLC_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : DRVOFF_Pin */
   GPIO_InitStruct.Pin = DRVOFF_Pin;
@@ -420,8 +512,8 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(NFAULT_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PWM_INLC_Pin PWM_INLB_Pin NSLEEP_Pin */
-  GPIO_InitStruct.Pin = PWM_INLC_Pin|PWM_INLB_Pin|NSLEEP_Pin;
+  /*Configure GPIO pins : PWM_INLA_Pin PWM_INLB_Pin NSLEEP_Pin */
+  GPIO_InitStruct.Pin = PWM_INLA_Pin|PWM_INLB_Pin|NSLEEP_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -435,12 +527,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Alternate = GPIO_AF0_SPI1;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : PWM_INLCB6_Pin */
-  GPIO_InitStruct.Pin = PWM_INLCB6_Pin;
+  /*Configure GPIO pin : PWM_INLC_Pin */
+  GPIO_InitStruct.Pin = PWM_INLC_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(PWM_INLCB6_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(PWM_INLC_GPIO_Port, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 

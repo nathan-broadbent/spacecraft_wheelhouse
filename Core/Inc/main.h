@@ -63,14 +63,20 @@ void Error_Handler(void);
 #define DRVOFF_GPIO_Port GPIOC
 #define NFAULT_Pin GPIO_PIN_15
 #define NFAULT_GPIO_Port GPIOC
-#define PWM_INLC_Pin GPIO_PIN_0
-#define PWM_INLC_GPIO_Port GPIOA
+#define PWM_INLA_Pin GPIO_PIN_0
+#define PWM_INLA_GPIO_Port GPIOA
 #define PWM_INHA_Pin GPIO_PIN_1
 #define PWM_INHA_GPIO_Port GPIOA
+#define SOA_Pin GPIO_PIN_4
+#define SOA_GPIO_Port GPIOA
+#define SOB_Pin GPIO_PIN_5
+#define SOB_GPIO_Port GPIOA
 #define POCI_Pin GPIO_PIN_6
 #define POCI_GPIO_Port GPIOA
 #define PICO_Pin GPIO_PIN_7
 #define PICO_GPIO_Port GPIOA
+#define SOC_Pin GPIO_PIN_1
+#define SOC_GPIO_Port GPIOB
 #define PWM_INHB_Pin GPIO_PIN_8
 #define PWM_INHB_GPIO_Port GPIOA
 #define PWM_INLB_Pin GPIO_PIN_9
@@ -79,8 +85,8 @@ void Error_Handler(void);
 #define NSLEEP_GPIO_Port GPIOA
 #define PWM_INHC_Pin GPIO_PIN_5
 #define PWM_INHC_GPIO_Port GPIOB
-#define PWM_INLCB6_Pin GPIO_PIN_6
-#define PWM_INLCB6_GPIO_Port GPIOB
+#define PWM_INLC_Pin GPIO_PIN_6
+#define PWM_INLC_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 
